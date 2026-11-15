@@ -60,10 +60,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	storage, err := s3.NewMinio(cfg.S3)
-	if err != nil {
-		logger.Error("не удалось подключиться к S3", "err", err)
-		os.Exit(1)
+	var storage s3.Storage
+	if cfg.S3.Driver == "fs" {
+		storage, err = s3.NewFS(cfg.S3.Path, cfg.S3.PublicURL)
+		if err != nil {
+			logger.Error("не удалось инициализировать файловое хранилище", "err", err)
+			os.Exit(1)
+		}
+		logger.Info("используется файловое хранилище", "path", cfg.S3.Path)
+	} else {
+		storage, err = s3.NewMinio(cfg.S3)
+		if err != nil {
+			logger.Error("не удалось подключиться к S3", "err", err)
+			os.Exit(1)
+		}
 	}
 	mediaSvc := media.NewService(store, storage)
 

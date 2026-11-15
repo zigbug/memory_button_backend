@@ -43,6 +43,8 @@ type JWTConfig struct {
 }
 
 type S3Config struct {
+	Driver    string // "s3" (default) | "fs"
+	Path      string // for fs driver
 	Endpoint  string
 	Region    string
 	Bucket    string
@@ -91,6 +93,8 @@ func Load() (*Config, error) {
 			Issuer: getEnv("JWT_ISSUER", "memory-button"),
 		},
 		S3: S3Config{
+		Driver:    strings.ToLower(getEnv("STORAGE_DRIVER", "s3")),
+		Path:      getEnv("STORAGE_PATH", "/data/storage"),
 			Endpoint:  getEnv("S3_ENDPOINT", "localhost:9000"),
 			Region:    getEnv("S3_REGION", "us-east-1"),
 			Bucket:    getEnv("S3_BUCKET", "memory-button"),
