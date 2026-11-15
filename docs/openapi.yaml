@@ -1,0 +1,627 @@
+openapi: 3.0.3
+info:
+  title: Memory Button API
+  version: 0.1.0
+  description: |
+    Backend MVP for "Memory Button" — voice memories about ancestors (single-family).
+    Turn-by-turn interview sessions (ASR/LLM/TTS), people/relationships/stories,
+    draft extraction with explicit user confirmation, questions registry, and Q&A
+    over confirmed data only.
+
+    **Auth:** Bearer JWT from `POST /api/v1/auth/login` (single-user). Optional static bearer token for debug.
+    **Base path:** `/api/v1` (health and docs also at root: `/health`, `/docs/`, `/openapi.yaml`).
+servers:
+  - url: /api/v1
+    description: API v1 (relative)
+tags:
+  - name: health
+  - name: auth
+  - name: persons
+  - name: relationships
+  - name: sessions
+  - name: drafts
+  - name: stories
+  - name: questions
+  - name: qa
+  - name: media
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        code: { type: string }
+        request_id: { type: string }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        created_at: { type: string, format: date-time }
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+    LoginResponse:
+      type: object
+      properties:
+        token: { type: string }
+        token_type: { type: string, example: Bearer }
+        expires_in: { type: integer }
+        user: { $ref: '#/components/schemas/User' }
+    Person:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string }
+        name_variants: { type: array, items: { type: string } }
+        birth_date: { type: string }
+        birth_approx: { type: boolean }
+        death_date: { type: string }
+        death_approx: { type: boolean }
+        gender: { type: string, nullable: true }
+        places: { type: array, items: { type: string } }
+        notes: { type: string }
+        photo_media_id: { type: string, format: uuid, nullable: true }
+        photo_url: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PersonRequest:
+      type: object
+      required: [display_name]
+      properties:
+        display_name: { type: string }
+        name_variants: { type: array, items: { type: string } }
+        birth_date: { type: string }
+        birth_approx: { type: boolean }
+        death_date: { type: string }
+        death_approx: { type: boolean }
+        gender: { type: string }
+        places: { type: array, items: { type: string } }
+        notes: { type: string }
+        photo_media_id: { type: string, format: uuid, nullable: true }
+    Relationship:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        from_person_id: { type: string, format: uuid }
+        to_person_id: { type: string, format: uuid }
+        type: { type: string, enum: [parent_child, spouse, sibling, other] }
+        confidence: { type: string, enum: [high, medium, low] }
+        source: { type: string }
+        note: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    RelationshipRequest:
+      type: object
+      required: [from_person_id, to_person_id, type]
+      properties:
+        from_person_id: { type: string, format: uuid }
+        to_person_id: { type: string, format: uuid }
+        type: { type: string, enum: [parent_child, spouse, sibling, other] }
+        confidence: { type: string, enum: [high, medium, low] }
+        note: { type: string }
+    Session:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        mode: { type: string, enum: [new_story, continue_person, clarify_person, qa] }
+        person_id: { type: string, format: uuid, nullable: true }
+        status: { type: string, enum: [active, completed, archived] }
+        context_summary: { type: string }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time, nullable: true }
+    Turn:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        session_id: { type: string, format: uuid }
+        seq: { type: integer }
+        role: { type: string, enum: [user, assistant, system] }
+        text: { type: string }
+        audio_media_id: { type: string, format: uuid, nullable: true }
+        audio_url: { type: string }
+        engine: { type: string }
+        fallback: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Story:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        session_id: { type: string, format: uuid, nullable: true }
+        person_ids: { type: array, items: { type: string, format: uuid } }
+        text: { type: string }
+        status: { type: string, enum: [draft, confirmed] }
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Question:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        person_id: { type: string, format: uuid, nullable: true }
+        text: { type: string }
+        source: { type: string, enum: [dialogue, qa, extraction, manual] }
+        reason: { type: string }
+        status: { type: string, enum: [open, resolved, dismissed] }
+        priority: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    DraftDecision:
+      type: object
+      required: [item_id, action]
+      properties:
+        item_id: { type: string, format: uuid }
+        action: { type: string, enum: [confirm, dismiss] }
+        payload: { type: object, additionalProperties: true }
+    QARequest:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string }
+        scope_person_id: { type: string, format: uuid, nullable: true }
+    QASource:
+      type: object
+      properties:
+        person_id: { type: string }
+        person_name: { type: string }
+        story_id: { type: string }
+        fact_id: { type: string }
+        excerpt: { type: string }
+    QAAnswer:
+      type: object
+      properties:
+        answer: { type: string }
+        sources:
+          type: array
+          items: { $ref: '#/components/schemas/QASource' }
+        insufficient_data: { type: boolean }
+        suggested_questions:
+          type: array
+          items: { type: string }
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Health check (also available at GET /health without prefix)
+      security: []
+      responses:
+        '200': { description: OK }
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login (single-user)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { description: Invalid credentials }
+  /me:
+    get:
+      tags: [auth]
+      summary: Current user
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+  /persons:
+    get:
+      tags: [persons]
+      summary: List persons
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer }
+        - in: query
+          name: offset
+          schema: { type: integer }
+      responses:
+        '200': { description: List }
+    post:
+      tags: [persons]
+      summary: Create person
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PersonRequest' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Person' }
+  /persons/{id}:
+    get:
+      tags: [persons]
+      summary: Person card (relationships, stories, facts, questions)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Card }
+        '404': { description: Not found }
+    patch:
+      tags: [persons]
+      summary: Update person
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PersonRequest' }
+      responses:
+        '200': { description: Updated }
+  /persons/{id}/photo:
+    post:
+      tags: [persons]
+      summary: Upload person photo
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201': { description: Media created }
+  /persons/{id}/stories:
+    get:
+      tags: [stories]
+      summary: List stories for person
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Stories }
+  /persons/{id}/questions:
+    get:
+      tags: [questions]
+      summary: List questions for person
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, resolved, dismissed] }
+      responses:
+        '200': { description: Questions }
+  /relationships:
+    get:
+      tags: [relationships]
+      summary: List relationships
+      parameters:
+        - in: query
+          name: person_id
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: List }
+    post:
+      tags: [relationships]
+      summary: Create relationship
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RelationshipRequest' }
+      responses:
+        '201': { description: Created }
+  /relationships/{id}:
+    patch:
+      tags: [relationships]
+      summary: Update relationship
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RelationshipRequest' }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [relationships]
+      summary: Delete relationship
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Deleted }
+  /sessions:
+    post:
+      tags: [sessions]
+      summary: Create session (start dialogue)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { type: string, enum: [new_story, continue_person, clarify_person, qa] }
+                person_id: { type: string, format: uuid, nullable: true }
+                question_ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        '201': { description: Session + greeting + known facts/questions }
+  /sessions/{id}:
+    get:
+      tags: [sessions]
+      summary: Get session with turns
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Session and turns }
+  /sessions/{id}/turns:
+    post:
+      tags: [sessions]
+      summary: Send user audio turn (ASR -> LLM -> TTS)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                audio: { type: string, format: binary }
+                file: { type: string, format: binary }
+      responses:
+        '200': { description: Recognized text and assistant reply (text + audio) }
+  /sessions/{id}/complete:
+    post:
+      tags: [sessions]
+      summary: Complete session and trigger post-processing
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '202': { description: Completed/processing started }
+  /sessions/{id}/draft:
+    get:
+      tags: [drafts]
+      summary: Get draft for session
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Draft or pending status }
+  /drafts/{session_id}/confirm:
+    post:
+      tags: [drafts]
+      summary: Confirm draft (apply only confirmed items)
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/DraftDecision' }
+                story_text: { type: string }
+                story_person_ids:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        '200': { description: Confirmed }
+        '409': { description: Draft already confirmed/dismissed }
+  /stories/{id}:
+    get:
+      tags: [stories]
+      summary: Get story
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Story
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Story' }
+  /stories/{id}/confirm:
+    post:
+      tags: [stories]
+      summary: Confirm/edit story
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                person_ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        '200': { description: Confirmed story }
+  /questions:
+    get:
+      tags: [questions]
+      summary: List questions
+      parameters:
+        - in: query
+          name: person_id
+          schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, resolved, dismissed] }
+        - in: query
+          name: source
+          schema: { type: string }
+      responses:
+        '200': { description: List }
+    post:
+      tags: [questions]
+      summary: Create question
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                person_id: { type: string, format: uuid, nullable: true }
+                text: { type: string }
+                reason: { type: string }
+                priority: { type: integer }
+      responses:
+        '201': { description: Created }
+  /questions/{id}:
+    patch:
+      tags: [questions]
+      summary: Update question
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                status: { type: string, enum: [open, resolved, dismissed] }
+                priority: { type: integer }
+                reason: { type: string }
+      responses:
+        '200': { description: Updated }
+  /qa/ask:
+    post:
+      tags: [qa]
+      summary: Ask a question over confirmed data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QARequest' }
+      responses:
+        '200':
+          description: Answer with sources
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QAAnswer' }
+  /media/{id}:
+    get:
+      tags: [media]
+      summary: Get media metadata
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Media }
+  /media/{id}/content:
+    get:
+      tags: [media]
+      summary: Get media content (proxy)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Binary content }
+  /media/upload:
+    post:
+      tags: [media]
+      summary: Upload media (multipart)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                kind: { type: string }
+                owner_kind: { type: string }
+                owner_id: { type: string }
+                file: { type: string, format: binary }
+      responses:
+        '201': { description: Created }
+  /media/presign:
+    post:
+      tags: [media]
+      summary: Presign upload (alternative)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kind: { type: string }
+                owner_kind: { type: string }
+                owner_id: { type: string }
+                filename: { type: string }
+                mime: { type: string }
+      responses:
+        '200': { description: Presigned URL }

@@ -30,16 +30,17 @@ type Handler struct {
 	Dialogue *pipeline.Dialogue
 	Post     *pipeline.Postprocessor
 	QA       *pipeline.QAService
+	Swagger  *SwaggerHandler
 	Config   *config.Config
 	Logger   *slog.Logger
 }
 
 func New(store *postgres.Store, provider ai.Provider, mediaSvc *media.Service, storage s3.Storage,
 	dialogue *pipeline.Dialogue, post *pipeline.Postprocessor, qa *pipeline.QAService,
-	cfg *config.Config, logger *slog.Logger) *Handler {
+	swagger *SwaggerHandler, cfg *config.Config, logger *slog.Logger) *Handler {
 	return &Handler{
 		Store: store, AI: provider, Media: mediaSvc, Storage: storage,
-		Dialogue: dialogue, Post: post, QA: qa, Config: cfg, Logger: logger,
+		Dialogue: dialogue, Post: post, QA: qa, Swagger: swagger, Config: cfg, Logger: logger,
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"memorybutton/backend/internal/ai/providerfactory"
@@ -83,7 +84,8 @@ func main() {
 	post := pipeline.NewPostprocessor(store, provider, mediaSvc, logger, interviewerModel, extractorModel)
 	qa := pipeline.NewQAService(store, provider, logger)
 
-	h := handlers.New(store, provider, mediaSvc, storage, dialogue, post, qa, cfg, logger)
+	swagger := handlers.NewSwaggerHandler(findOpenAPISpec(), "Memory Button API — Swagger UI")
+	h := handlers.New(store, provider, mediaSvc, storage, dialogue, post, qa, swagger, cfg, logger)
 	router := httprouter.NewRouter(h, cfg, store, logger)
 
 	// Воркер (если не синхронный режим).
@@ -116,4 +118,22 @@ func ensureUserHash(a config.AuthConfig) (string, error) {
 		return a.PasswordHash, nil
 	}
 	return auth.HashPassword(a.Password, a.BcryptCost)
+}
+
+func findOpenAPISpec() string {
+	candidates := []string{
+		"docs/openapi.yaml",
+		"/app/docs/openapi.yaml",
+		"/opt/memory-button/docs/openapi.yaml",
+		"/root/memory-button-backend/docs/openapi.yaml",
+	}
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "docs", "openapi.yaml"))
+	}
+	for _, p := range candidates {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	return "docs/openapi.yaml"
 }

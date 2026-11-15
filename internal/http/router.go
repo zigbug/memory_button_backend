@@ -18,6 +18,14 @@ func NewRouter(h *handlers.Handler, cfg *config.Config, store *postgres.Store, l
 	mux.HandleFunc("GET /health", h.Health)
 	mux.HandleFunc("GET /api/v1/health", h.Health)
 	mux.HandleFunc("POST /api/v1/auth/login", h.Login)
+	if h.Swagger != nil {
+		mux.HandleFunc("GET /docs", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/docs/", http.StatusMovedPermanently)
+		})
+		mux.HandleFunc("GET /docs/", h.Swagger.ServeUI)
+		mux.HandleFunc("GET /openapi.yaml", h.Swagger.ServeSpec)
+		mux.HandleFunc("GET /openapi.json", h.Swagger.ServeSpec)
+	}
 
 	// Защищённые.
 	authed := http.NewServeMux()
