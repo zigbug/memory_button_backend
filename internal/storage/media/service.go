@@ -11,6 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"bytes"
+
 	"memorybutton/backend/internal/domain"
 	"memorybutton/backend/internal/storage/postgres"
 	"memorybutton/backend/internal/storage/s3"
@@ -37,7 +39,7 @@ func (s *Service) Upload(ctx context.Context, kind domain.MediaKind, ownerKind, 
 	if mime == "" {
 		mime = "application/octet-stream"
 	}
-	if err := s.storage.Put(ctx, key, strings.NewReader(string(data)), int64(len(data)), mime); err != nil {
+	if err := s.storage.Put(ctx, key, bytes.NewReader(data), int64(len(data)), mime); err != nil {
 		return m, err
 	}
 	url, err := s.storage.URL(ctx, key)

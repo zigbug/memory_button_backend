@@ -86,7 +86,33 @@ func validUUID(s string) bool {
 }
 
 func handleErr(w http.ResponseWriter, r *http.Request, err error) {
+	// Логируем неожиданные ошибки (5xx) с request_id для диагностики.
+	var he *httputil.HTTPError
+	if !errors.As(err, &he) && !isKnownAppError(err) {
+		reqID := ""
+		if r != nil {
+			reqID = httputil.RequestIDFrom(r.Context())
+		}
+		slog.Default().Error("http handler error",
+			"err", err,
+			"request_id", reqID,
+			"method", r.Method,
+			"path", r.URL.Path,
+		)
+	}
 	httputil.WriteHTTPErr(w, r, err)
+}
+
+func isKnownAppError(err error) bool {
+	switch {
+	case errors.Is(err, postgres.ErrNotFound),
+		errors.Is(err, postgres.ErrDraftAlreadyConfirmed),
+		errors.Is(err, postgres.ErrDraftDismissed),
+		errors.Is(err, postgres.ErrSessionNotActive):
+		return true
+	default:
+		return false
+	}
 }
 
 func badRequest(msg string) error {

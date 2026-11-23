@@ -11,10 +11,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/memory-
 FROM alpine:3.20
 RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
-RUN apk add --no-cache ca-certificates tzdata ffmpeg
+RUN apk add --no-cache ca-certificates tzdata ffmpeg su-exec
 COPY --from=build /out/memory-button-api /app/memory-button-api
 COPY migrations /app/migrations
-USER app
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh && mkdir -p /data/storage && chown -R app:app /data/storage
 EXPOSE 8080
 ENV HTTP_ADDR=:8080
-ENTRYPOINT ["/app/memory-button-api"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
