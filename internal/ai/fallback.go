@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"log/slog"
 )
 
 // Обёртки graceful fallback: если основной провайдер недоступен, результат
@@ -18,6 +19,7 @@ func (f ASRFallback) Transcribe(ctx context.Context, audio []byte, filename, lan
 	if err == nil {
 		return res, nil
 	}
+	slog.Default().Warn("HF ASR failed, using fallback", "err", err, "filename", filename)
 	if f.Fallback == nil {
 		return nil, err
 	}
@@ -39,6 +41,7 @@ func (f LLMFallback) Chat(ctx context.Context, req ChatRequest) (*ChatResult, er
 	if err == nil {
 		return res, nil
 	}
+	slog.Default().Warn("HF LLM failed, using fallback", "err", err, "purpose", req.Purpose)
 	if f.Fallback == nil {
 		return nil, err
 	}
@@ -60,6 +63,7 @@ func (f TTSFallback) Synthesize(ctx context.Context, text string) (*TTSResult, e
 	if err == nil {
 		return res, nil
 	}
+	slog.Default().Warn("HF TTS failed, using fallback", "err", err, "text_len", len(text))
 	if f.Fallback == nil {
 		return nil, err
 	}

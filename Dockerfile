@@ -11,7 +11,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/memory-
 FROM alpine:3.20
 RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
-RUN apk add --no-cache ca-certificates tzdata ffmpeg su-exec
+RUN apk add --no-cache ca-certificates tzdata ffmpeg su-exec espeak-ng
 COPY --from=build /out/memory-button-api /app/memory-button-api
 COPY migrations /app/migrations
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh

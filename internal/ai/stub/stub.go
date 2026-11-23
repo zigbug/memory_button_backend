@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os/exec"
 	"strings"
 
 	"memorybutton/backend/internal/ai"
@@ -102,9 +103,12 @@ func (p *Provider) Chat(_ context.Context, req ai.ChatRequest) (*ai.ChatResult, 
 
 // ---------- TTS ----------
 
-// Synthesize генерирует короткий корректный WAV (16-bit PCM, моно, 16 кГц),
-// чтобы клиент мог воспроизвести ответ даже без HF.
-func (p *Provider) Synthesize(_ context.Context, text string) (*ai.TTSResult, error) {
+// Synthesize tries espeak-ng for real Russian speech; falls back to a short beep WAV.
+func (p *Provider) Synthesize(ctx context.Context, text string) (*ai.TTSResult, error) {
+	if out, err := synthesizeEspeak(ctx, text); err == nil && len(out) > 44 {
+		return &ai.TTSResult{Audio: out, Format: "wav", Engine: "espeak-ng"}, nil
+	}
+	// Fallback: short valid WAV beep so client can still play something.
 	sampleRate := 16000
 	duration := 0.25
 	if len(text) > 100 {
@@ -115,14 +119,27 @@ func (p *Provider) Synthesize(_ context.Context, text string) (*ai.TTSResult, er
 	buf := make([]byte, 2)
 	for i := 0; i < n; i++ {
 		t := float64(i) / float64(sampleRate)
-		// Мягкий тон 440 Гц с плавным затуханием.
 		env := math.Min(1, 10*t) * math.Exp(-3*t)
 		v := int16(8000 * env * math.Sin(2*math.Pi*440*t))
 		binary.LittleEndian.PutUint16(buf, uint16(v))
 		pcm = append(pcm, buf...)
 	}
 	header := wavHeader(len(pcm), sampleRate, 1, 16)
-	return &ai.TTSResult{Audio: append(header, pcm...), Format: "wav", Engine: "stub"}, nil
+	return &ai.TTSResult{Audio: append(header, pcm...), Format: "wav", Engine: "stub-beep"}, nil
+}
+
+func synthesizeEspeak(ctx context.Context, text string) ([]byte, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		text = "Пустой ответ"
+	}
+	// Limit length to avoid very long synthesis in turn-by-turn flow.
+	runes := []rune(text)
+	if len(runes) > 800 {
+		text = string(runes[:800])
+	}
+	cmd := exec.CommandContext(ctx, "espeak-ng", "-v", "ru", "-s", "160", "--stdout", text)
+	return cmd.Output()
 }
 
 func wavHeader(dataLen, sampleRate, channels, bits int) []byte {

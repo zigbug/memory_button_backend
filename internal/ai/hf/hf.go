@@ -51,6 +51,10 @@ func (c *Client) chatURL(model string) string {
 	if strings.Contains(c.baseURL, "{model}") {
 		return strings.ReplaceAll(c.baseURL, "{model}", url.PathEscape(model))
 	}
+	// Support OpenAI-compatible router endpoint that takes model in body.
+	if strings.HasSuffix(c.baseURL, "/v1/chat/completions") || strings.HasSuffix(c.baseURL, "/chat/completions") {
+		return c.baseURL
+	}
 	return c.baseURL + "/" + url.PathEscape(model) + "/v1/chat/completions"
 }
 
@@ -241,8 +245,10 @@ func audioMIME(filename string) string {
 		return "audio/mpeg"
 	case strings.HasSuffix(filename, ".wav"):
 		return "audio/wav"
-	case strings.HasSuffix(filename, ".m4a"), strings.HasSuffix(filename, ".aac"):
-		return "audio/mp4"
+	case strings.HasSuffix(filename, ".m4a"):
+		return "audio/m4a"
+	case strings.HasSuffix(filename, ".aac"):
+		return "audio/aac"
 	default:
 		return "application/octet-stream"
 	}

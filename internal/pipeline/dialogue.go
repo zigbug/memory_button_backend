@@ -2,9 +2,13 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -149,8 +153,9 @@ func (d *Dialogue) Turn(ctx context.Context, sessionID string, audio []byte, fil
 		return nil, fmt.Errorf("сохранить аудио: %w", err)
 	}
 
-	// 2. ASR.
-	asrRes, err := d.ai.ASR.Transcribe(ctx, audio, filename, "ru")
+	// 2. ASR. Транскодируем в WAV для совместимости с HF/whisper, если формат проблемный.
+	asrAudio, asrName := transcodeForASR(ctx, audio, filename, d.logger)
+	asrRes, err := d.ai.ASR.Transcribe(ctx, asrAudio, asrName, "ru")
 	if err != nil {
 		return nil, fmt.Errorf("asr: %w", err)
 	}
@@ -254,12 +259,65 @@ func audioMIME(filename string) string {
 	case strings.HasSuffix(name, ".mp3"):
 		return "audio/mpeg"
 	case strings.HasSuffix(name, ".m4a"):
-		return "audio/mp4"
+		return "audio/m4a"
+	case strings.HasSuffix(name, ".aac"):
+		return "audio/aac"
 	case strings.HasSuffix(name, ".wav"):
 		return "audio/wav"
+	case strings.HasSuffix(name, ".flac"):
+		return "audio/flac"
+	case strings.HasSuffix(name, ".amr"):
+		return "audio/AMR"
 	default:
 		return "application/octet-stream"
 	}
+}
+
+// transcodeForASR converts mobile/problematic audio formats to 16kHz mono WAV for ASR.
+// On failure it returns the original bytes/filename so the provider can try as-is.
+func transcodeForASR(ctx context.Context, audio []byte, filename string, logger *slog.Logger) ([]byte, string) {
+	name := strings.ToLower(filename)
+	// Formats usually accepted directly by whisper/HF.
+	if strings.HasSuffix(name, ".wav") || strings.HasSuffix(name, ".flac") || strings.HasSuffix(name, ".mp3") || strings.HasSuffix(name, ".ogg") {
+		return audio, filename
+	}
+	// Only attempt transcode when ffmpeg is available.
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return audio, filename
+	}
+	inExt := filepath.Ext(name)
+	if inExt == "" {
+		inExt = ".bin"
+	}
+	tmpDir, err := os.MkdirTemp("", "mb-asr-*")
+	if err != nil {
+		return audio, filename
+	}
+	defer os.RemoveAll(tmpDir)
+	inPath := filepath.Join(tmpDir, "in"+inExt)
+	outPath := filepath.Join(tmpDir, "out.wav")
+	if err := os.WriteFile(inPath, audio, 0o600); err != nil {
+		return audio, filename
+	}
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+		"-i", inPath, "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", outPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if logger != nil {
+			logger.Warn("ffmpeg transcode for ASR failed, using original", "err", err, "stderr", strings.TrimSpace(stderr.String()), "filename", filename)
+		}
+		return audio, filename
+	}
+	out, err := os.ReadFile(outPath)
+	if err != nil || len(out) == 0 {
+		return audio, filename
+	}
+	outName := strings.TrimSuffix(filename, filepath.Ext(filename)) + ".wav"
+	if outName == ".wav" {
+		outName = "audio.wav"
+	}
+	return out, outName
 }
 
 func deref(s *string) string {
